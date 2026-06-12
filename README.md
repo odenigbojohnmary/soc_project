@@ -1,4 +1,4 @@
-# SOC Incident Log — JavaScript Version
+# SOC  and Incident Log Management System POC Project
 
 **A Security Operations Centre (SOC) Incident Management System**  
 Built with Node.js, Express.js, MySQL, and Vanilla JavaScript.
