@@ -1,0 +1,258 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SOC Incident Log</title>
+  <style>
+    /* Minimal functional styling - emphasis is on programming per spec */
+    body { font-family: sans-serif; max-width: 960px; margin: 20px auto; padding: 0 16px; }
+    h1   { border-bottom: 2px solid #333; padding-bottom: 8px; }
+    nav  { margin: 12px 0; }
+    nav button { margin-right: 6px; padding: 6px 14px; cursor: pointer; }
+    nav button.active { background: #333; color: #fff; }
+    section { display: none; }
+    section.active { display: block; }
+    h2   { margin-top: 20px; }
+    label { display: block; margin-top: 8px; font-weight: bold; }
+    input, select, textarea { width: 100%; padding: 6px; margin-top: 3px; box-sizing: border-box; }
+    textarea { height: 70px; }
+    button.action { margin-top: 10px; padding: 7px 16px; cursor: pointer; }
+    table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+    th, td { border: 1px solid #ccc; padding: 6px 10px; text-align: left; font-size: 13px; }
+    th    { background: #f0f0f0; }
+    .msg  { margin-top: 8px; padding: 6px 10px; background: #eef; border-left: 3px solid #66a; }
+    .err  { background: #fee; border-left-color: #a33; }
+    .ok   { color: green; font-weight: bold; }
+    .warn { color: orange; font-weight: bold; }
+    .crit { color: red; font-weight: bold; }
+    fieldset { margin-top: 16px; padding: 12px; }
+    legend   { font-weight: bold; }
+  </style>
+</head>
+<body>
+
+<h1>SOC Incident Log — SecureWatch</h1>
+
+<!-- Navigation tabs -->
+<nav>
+  <button class="active" onclick="showTab('dashboard')">Dashboard</button>
+  <button onclick="showTab('incidents')">Incidents</button>
+  <button onclick="showTab('staff')">Staff</button>
+  <button onclick="showTab('assets')">Assets</button>
+  <button onclick="showTab('uptime')">Uptime Status</button>
+  <button onclick="showTab('cve')">CVE Lookup</button>
+</nav>
+
+<!-- ================================================================
+     DASHBOARD
+================================================================ -->
+<section id="dashboard">
+  <h2>Dashboard</h2>
+  <button class="action" onclick="loadDashboard()">Refresh</button>
+  <div id="dashboard-stats"></div>
+  <h3>Recent Incidents</h3>
+  <div id="dashboard-recent"></div>
+</section>
+
+<!-- ================================================================
+     INCIDENTS
+================================================================ -->
+<section id="incidents" class="active">
+  <h2>Incidents</h2>
+
+  <!-- Filter + Search bar -->
+  <fieldset>
+    <legend>Search &amp; Filter</legend>
+    <label>Keyword Search <input type="text" id="filter-q" placeholder="Search title or description..." /></label>
+    <label>Status
+      <select id="filter-status">
+        <option value="">All</option>
+        <option value="open">Open</option>
+        <option value="investigating">Investigating</option>
+        <option value="resolved">Resolved</option>
+      </select>
+    </label>
+    <label>Severity
+      <select id="filter-severity">
+        <option value="">All</option>
+        <option value="critical">Critical</option>
+        <option value="high">High</option>
+        <option value="medium">Medium</option>
+        <option value="low">Low</option>
+      </select>
+    </label>
+    <button class="action" onclick="loadIncidents()">Search / Filter</button>
+    <button class="action" onclick="exportCSV()">Export CSV</button>
+  </fieldset>
+  <div id="incidents-pagination"></div>
+
+  <div id="incidents-table"></div>
+
+  <!-- Create Incident -->
+  <fieldset>
+    <legend>Log New Incident</legend>
+    <label>Title* <input type="text" id="inc-title" placeholder="e.g. Suspicious login attempt" /></label>
+    <label>Type*
+      <select id="inc-type">
+        <option value="alert">Alert</option>
+        <option value="breach">Breach</option>
+        <option value="outage">Outage</option>
+        <option value="vulnerability">Vulnerability</option>
+      </select>
+    </label>
+    <label>Severity*
+      <select id="inc-severity">
+        <option value="high">High</option>
+        <option value="critical">Critical</option>
+        <option value="medium">Medium</option>
+        <option value="low">Low</option>
+      </select>
+    </label>
+    <label>Description <textarea id="inc-desc" placeholder="Details of the incident..."></textarea></label>
+    <label>CVE ID (optional — will auto-fill from NVD)
+      <input type="text" id="inc-cve" placeholder="e.g. CVE-2024-1234" />
+    </label>
+    <label>CVSS Score <input type="number" id="inc-cvss" step="0.1" min="0" max="10" placeholder="Auto-filled if CVE ID provided" /></label>
+    <label>Asset <select id="inc-asset"><option value="">-- None --</option></select></label>
+    <label>Assign To <select id="inc-assignee"><option value="">-- Unassigned --</option></select></label>
+    <button class="action" onclick="fetchCVEForIncident()">Lookup CVE</button>
+    <button class="action" onclick="createIncident()">Log Incident</button>
+    <div id="inc-msg"></div>
+  </fieldset>
+
+  <!-- Investigation Notes -->
+  <fieldset>
+    <legend>Investigation Notes</legend>
+    <label>Incident ID <input type="number" id="notes-inc-id" placeholder="Enter incident ID" /></label>
+    <button class="action" onclick="loadNotes()">Load Notes</button>
+    <div id="notes-list"></div>
+    <label>Add Note <textarea id="note-text" placeholder="Write your investigation note here..."></textarea></label>
+    <label>Your Staff ID (optional) <input type="number" id="note-author" placeholder="Your staff ID" /></label>
+    <button class="action" onclick="addNote()">Add Note</button>
+    <div id="note-msg"></div>
+  </fieldset>
+
+  <!-- Update / Delete -->
+  <fieldset>
+    <legend>Update Incident Status</legend>
+    <label>Incident ID <input type="number" id="upd-inc-id" placeholder="Enter ID from table above" /></label>
+    <label>New Status
+      <select id="upd-inc-status">
+        <option value="open">Open</option>
+        <option value="investigating">Investigating</option>
+        <option value="resolved">Resolved</option>
+      </select>
+    </label>
+    <label>Assign To <select id="upd-inc-assignee"><option value="">-- Unassigned --</option></select></label>
+    <button class="action" onclick="updateIncident()">Update</button>
+    <button class="action" onclick="deleteIncident()">Delete</button>
+    <div id="upd-inc-msg"></div>
+  </fieldset>
+</section>
+
+<!-- ================================================================
+     STAFF
+================================================================ -->
+<section id="staff">
+  <h2>Staff</h2>
+  <div id="staff-table"></div>
+
+  <fieldset>
+    <legend>Add Staff Member</legend>
+    <label>Name* <input type="text" id="st-name" placeholder="Full name" /></label>
+    <label>Email* <input type="email" id="st-email" placeholder="email@company.com" /></label>
+    <label>Role
+      <select id="st-role">
+        <option value="analyst">Analyst</option>
+        <option value="manager">Manager</option>
+      </select>
+    </label>
+    <button class="action" onclick="createStaff()">Add Staff</button>
+    <div id="st-msg"></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Update / Delete Staff</legend>
+    <label>Staff ID <input type="number" id="upd-st-id" placeholder="Enter ID from table above" /></label>
+    <label>Name <input type="text" id="upd-st-name" /></label>
+    <label>Email <input type="email" id="upd-st-email" /></label>
+    <label>Role
+      <select id="upd-st-role">
+        <option value="analyst">Analyst</option>
+        <option value="manager">Manager</option>
+      </select>
+    </label>
+    <button class="action" onclick="updateStaff()">Update</button>
+    <button class="action" onclick="deleteStaff()">Delete</button>
+    <div id="upd-st-msg"></div>
+  </fieldset>
+</section>
+
+<!-- ================================================================
+     ASSETS
+================================================================ -->
+<section id="assets">
+  <h2>Monitored Assets</h2>
+  <div id="assets-table"></div>
+
+  <fieldset>
+    <legend>Register New Asset</legend>
+    <label>Name* <input type="text" id="as-name" placeholder="e.g. Main Web Server" /></label>
+    <label>URL <input type="text" id="as-url" placeholder="https://example.com" /></label>
+    <label>Type
+      <select id="as-type">
+        <option value="web">Web</option>
+        <option value="server">Server</option>
+        <option value="network">Network</option>
+        <option value="application">Application</option>
+      </select>
+    </label>
+    <label>Owner <input type="text" id="as-owner" placeholder="Team or person responsible" /></label>
+    <button class="action" onclick="createAsset()">Register Asset</button>
+    <div id="as-msg"></div>
+  </fieldset>
+
+  <fieldset>
+    <legend>Update / Delete Asset</legend>
+    <label>Asset ID <input type="number" id="upd-as-id" /></label>
+    <label>Name <input type="text" id="upd-as-name" /></label>
+    <label>URL <input type="text" id="upd-as-url" /></label>
+    <label>Owner <input type="text" id="upd-as-owner" /></label>
+    <button class="action" onclick="updateAsset()">Update</button>
+    <button class="action" onclick="deleteAsset()">Delete</button>
+    <div id="upd-as-msg"></div>
+  </fieldset>
+</section>
+
+<!-- ================================================================
+     UPTIME STATUS
+================================================================ -->
+<section id="uptime">
+  <h2>Live Service Uptime Status</h2>
+  <p>Fetches real-time status from public status pages (GitHub, Cloudflare, npm).</p>
+  <button class="action" onclick="loadUptime()">Refresh Status</button>
+  <div id="uptime-results"></div>
+
+  <fieldset>
+    <legend>Ping a Custom URL</legend>
+    <label>URL <input type="text" id="ping-url" placeholder="https://your-asset-url.com" /></label>
+    <button class="action" onclick="pingUrl()">Check</button>
+    <div id="ping-result"></div>
+  </fieldset>
+</section>
+
+<!-- ================================================================
+     CVE LOOKUP
+================================================================ -->
+<section id="cve">
+  <h2>CVE Lookup (NVD Database)</h2>
+  <p>Look up a known vulnerability by CVE ID to get its description, CVSS score, and severity.</p>
+  <label>CVE ID <input type="text" id="cve-input" placeholder="e.g. CVE-2021-44228" /></label>
+  <button class="action" onclick="lookupCVE()">Lookup</button>
+  <div id="cve-result"></div>
+</section>
+
+<script src="app.js"></script>
+</body>
+</html>
